@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "todo-harvester"
+version = "0.1.0"
+description = "Scan source trees for TODO/FIXME-style markers"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Ryan Rife" }]
+dependencies = []
+
+[project.scripts]
+todo-harvester = "todo_harvester.cli:main"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
