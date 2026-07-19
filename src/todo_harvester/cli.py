@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from typing import Sequence
 
-from .walker import collect_candidate_files
+from .markers import scan_markers
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -15,7 +15,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     scan_parser = subparsers.add_parser(
         "scan",
-        help="Walk a directory recursively and list text files selected for scanning.",
+        help="Walk a directory recursively and extract TODO/FIXME/HACK/XXX markers.",
     )
     scan_parser.add_argument(
         "root",
@@ -33,6 +33,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print absolute file paths instead of paths relative to root.",
     )
+    scan_parser.add_argument(
+        "--tags",
+        default="",
+        help="Comma-separated marker tags to match (default: TODO,FIXME,HACK,XXX).",
+    )
 
     return parser
 
@@ -42,13 +47,17 @@ def cli(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "scan":
-        files = collect_candidate_files(
+        markers = scan_markers(
             args.root,
             exclude_patterns=args.exclude,
+            tags=args.tags,
             relative=not args.absolute,
         )
-        for file_path in files:
-            print(file_path)
+        for marker in markers:
+            if marker.text:
+                print(f"{marker.path}:{marker.line}: {marker.tag}: {marker.text}")
+            else:
+                print(f"{marker.path}:{marker.line}: {marker.tag}")
         return 0
 
     parser.error(f"Unknown command: {args.command}")
