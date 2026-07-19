@@ -61,10 +61,11 @@ todo-harvester diff origin/main --tags TODO,FIXME,HACK
 
 ## Current status / next milestones
 
-**Status:** bootstrapping. Scaffolding and backlog are in place; core scanner not yet built.
+**Status:** M1 foundation started. Recursive file walking with exclude globs and
+safe text-file filtering is implemented behind `todo-harvester scan`.
 
 Next milestones:
-1. Core file walker + marker regex engine with tag/exclude filters.
+1. Marker regex extraction engine with tag filters (`TODO`/`FIXME`/`HACK`/`XXX`).
 2. Report formatters: plain text, Markdown, JSON.
 3. `--blame` git attribution and age sorting.
 4. Deduplication of near-identical markers.
