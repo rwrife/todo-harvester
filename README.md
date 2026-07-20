@@ -1,74 +1,133 @@
 # todo-harvester
 
-Scan a codebase for `TODO` / `FIXME` / `HACK` / `XXX` comments and turn them into an
-actionable, deduplicated backlog report.
+Scan a source tree for `TODO` / `FIXME` / `HACK` / `XXX` markers and produce a structured report.
 
-## Project overview
+## Install
 
-`todo-harvester` is a small command-line tool that walks a source tree, extracts inline
-"marker" comments (TODO, FIXME, HACK, XXX, and custom tags), and produces a clean,
-grouped report of the work hiding in your code. It attributes each item to a file, line,
-and (optionally) the author who last touched that line via `git blame`, then deduplicates
-near-identical notes so a single recurring reminder doesn't drown the signal.
-
-## Motivation
-
-Every codebase accumulates inline promises — `# TODO: handle the empty case`,
-`// FIXME: this leaks a handle`. They are invisible to issue trackers and easy to forget.
-Grepping for `TODO` gives a noisy flat list with no grouping, no ownership, and no way to
-tell a fresh note from a five-year-old one. `todo-harvester` closes that gap: it turns
-scattered markers into a structured, prioritizable backlog you can actually act on.
-
-## Use cases
-
-- **Onboarding a new codebase** — get a fast map of known rough edges before you start.
-- **Pre-release hygiene** — list every `FIXME` still standing before you cut a tag.
-- **Tech-debt triage** — group markers by directory/owner and decide what to schedule.
-- **CI gates** — fail a build if new `HACK`/`XXX` markers are introduced, or if the total
-  count regresses beyond a threshold.
-- **Weekly reports** — emit a Markdown or JSON digest of outstanding markers.
-
-## How to use
-
-Quickstart (planned interface):
+### pipx (recommended)
 
 ```bash
-# Scan the current directory, print a grouped report
-todo-harvester scan .
-
-# Only certain tags, output JSON
-todo-harvester scan ./src --tags TODO,FIXME --format json > todos.json
-
-# Attribute each marker to an author via git blame
-todo-harvester scan . --blame
-
-# Fail (exit non-zero) if there are more than 50 open markers — for CI
-todo-harvester scan . --max 50
+pipx install .
 ```
 
-## Example commands or workflows
+After install:
 
 ```bash
-# Group by directory and show the 10 oldest FIXMEs
-todo-harvester scan . --tags FIXME --sort age --limit 10
-
-# Markdown digest for a weekly report, ignoring vendored code
-todo-harvester scan . --format markdown --exclude 'node_modules,vendor,dist' > TODOS.md
-
-# CI gate: no new markers allowed vs. the base branch
-todo-harvester diff origin/main --tags TODO,FIXME,HACK
+todo-harvester --help
 ```
 
-## Current status / next milestones
+### Development install
 
-**Status:** M1 foundation started. Recursive file walking with exclude globs and
-safe text-file filtering is implemented behind `todo-harvester scan`.
+```bash
+python -m pip install -e .
+```
 
-Next milestones:
-1. Marker regex extraction engine with tag filters (`TODO`/`FIXME`/`HACK`/`XXX`).
-2. Report formatters: plain text, Markdown, JSON.
-3. `--blame` git attribution and age sorting.
-4. Deduplication of near-identical markers.
-5. CI-friendly `--max` threshold and `diff` subcommand.
+## CLI overview
 
-See [PLAN.md](./PLAN.md) for scope, approach, and non-goals.
+`todo-harvester` currently exposes one subcommand:
+
+- `scan` — recursively scan files and extract marker comments.
+
+Run help at any level:
+
+```bash
+todo-harvester --help
+todo-harvester scan --help
+```
+
+## `scan` subcommand
+
+```bash
+todo-harvester scan [root] [--exclude PATTERNS] [--absolute] [--tags TAGS] [--format {text,json}]
+```
+
+### Arguments
+
+| Argument | Type | Default | Description |
+|---|---|---|---|
+| `root` | positional path | `.` | Root directory to scan. |
+| `--exclude` | comma-separated string | built-ins (`.git,node_modules,dist,build,__pycache__`) | Additional glob/path patterns to exclude. |
+| `--absolute` | flag | `false` | Print absolute file paths instead of paths relative to `root`. |
+| `--tags` | comma-separated string | `TODO,FIXME,HACK,XXX` | Restrict marker tags to match (case-insensitive). |
+| `--format` | `text` or `json` | `text` | Output format. |
+| `-h`, `--help` | flag | n/a | Show command help and exit. |
+
+## Examples
+
+```bash
+# Scan current directory, text output
+todo-harvester scan
+
+# Scan a specific folder
+todo-harvester scan ./src
+
+# Restrict tags
+todo-harvester scan . --tags TODO,FIXME
+
+# Exclude additional directories/files
+todo-harvester scan . --exclude 'vendor,*.min.js,generated/*'
+
+# Absolute paths
+todo-harvester scan . --absolute
+
+# JSON output
+todo-harvester scan . --format json > markers.json
+```
+
+## Output formats
+
+### Text (`--format text`)
+
+One marker per line:
+
+```text
+path/to/file.py:12: TODO: normalize user id
+```
+
+If marker text is empty:
+
+```text
+path/to/file.py:12: TODO
+```
+
+### JSON (`--format json`)
+
+Outputs a JSON array of marker objects.
+
+#### JSON schema
+
+```json
+[
+  {
+    "tag": "TODO",
+    "text": "normalize user id",
+    "path": "src/module/file.py",
+    "line": 12
+  }
+]
+```
+
+Field definitions:
+
+- `tag` (`string`) — normalized uppercase marker tag.
+- `text` (`string`) — marker text after the tag (may be empty).
+- `path` (`string`) — file path (relative by default; absolute when `--absolute` is used).
+- `line` (`integer`) — 1-based line number.
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Successful scan and output generation. |
+| `2` | CLI usage/argument error (argparse). |
+
+## Development
+
+```bash
+# Run tests
+pytest -q
+```
+
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md).
