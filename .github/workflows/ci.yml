@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install package + test deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest
+
+      - name: Run test suite
+        run: pytest -q
+
+      - name: Verify pipx install + entry point
+        run: |
+          python -m pip install pipx
+          export PATH="$HOME/.local/bin:$PATH"
+          pipx install . --force
+          todo-harvester --help

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from typing import Sequence
 
 from .markers import scan_markers
@@ -38,6 +39,12 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         help="Comma-separated marker tags to match (default: TODO,FIXME,HACK,XXX).",
     )
+    scan_parser.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="Output format (default: text).",
+    )
 
     return parser
 
@@ -53,6 +60,11 @@ def cli(argv: Sequence[str] | None = None) -> int:
             tags=args.tags,
             relative=not args.absolute,
         )
+
+        if args.format == "json":
+            print(json.dumps([marker.as_dict() for marker in markers], indent=2))
+            return 0
+
         for marker in markers:
             if marker.text:
                 print(f"{marker.path}:{marker.line}: {marker.tag}: {marker.text}")

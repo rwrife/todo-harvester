@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from todo_harvester.cli import cli
@@ -61,3 +62,21 @@ def test_cli_scan_outputs_structured_marker_lines(tmp_path: Path, capsys) -> Non
 
     assert exit_code == 0
     assert output == ["pkg/mod.py:1: TODO: wire endpoint"]
+
+
+def test_cli_scan_json_output(tmp_path: Path, capsys) -> None:
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "mod.py").write_text("# TODO: ship it\n", encoding="utf-8")
+
+    exit_code = cli(["scan", str(tmp_path), "--format", "json"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert json.loads(output) == [
+        {
+            "tag": "TODO",
+            "text": "ship it",
+            "path": "pkg/mod.py",
+            "line": 1,
+        }
+    ]
