@@ -64,19 +64,50 @@ def test_cli_scan_outputs_structured_marker_lines(tmp_path: Path, capsys) -> Non
     assert output == ["pkg/mod.py:1: TODO: wire endpoint"]
 
 
-def test_cli_scan_json_output(tmp_path: Path, capsys) -> None:
+def test_cli_scan_json_output_schema_round_trip(tmp_path: Path, capsys) -> None:
     (tmp_path / "pkg").mkdir()
     (tmp_path / "pkg" / "mod.py").write_text("# TODO: ship it\n", encoding="utf-8")
 
     exit_code = cli(["scan", str(tmp_path), "--format", "json"])
     output = capsys.readouterr().out
+    payload = json.loads(output)
 
     assert exit_code == 0
-    assert json.loads(output) == [
+    assert payload == [
         {
             "tag": "TODO",
             "text": "ship it",
-            "path": "pkg/mod.py",
+            "file": "pkg/mod.py",
             "line": 1,
+            "count": 1,
         }
+    ]
+    assert set(payload[0]) == {"tag", "text", "file", "line", "count"}
+    assert json.loads(json.dumps(payload)) == payload
+
+
+def test_cli_scan_markdown_output(tmp_path: Path, capsys) -> None:
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "a.py").write_text("# TODO: first\n", encoding="utf-8")
+    (tmp_path / "pkg" / "b.py").write_text("# FIXME: second\n", encoding="utf-8")
+
+    exit_code = cli(["scan", str(tmp_path), "--format", "markdown"])
+    output = capsys.readouterr().out.strip().splitlines()
+
+    assert exit_code == 0
+    assert output == [
+        "# TODO Harvester Report",
+        "",
+        "Total markers: **2**",
+        "",
+        "## Summary by tag",
+        "- **FIXME**: 1",
+        "- **TODO**: 1",
+        "",
+        "## Markers by file",
+        "### `pkg/a.py`",
+        "- L1 **TODO**: first",
+        "",
+        "### `pkg/b.py`",
+        "- L1 **FIXME**: second",
     ]
