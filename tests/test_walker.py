@@ -55,4 +55,11 @@ def test_cli_scan_prints_marker_records(tmp_path: Path, capsys) -> None:
     output = capsys.readouterr().out.strip().splitlines()
 
     assert exit_code == 0
-    assert output == ["pkg/mod.py:1: TODO"]
+    assert output == [
+        "DIR|pkg",
+        "FILE|pkg/mod.py",
+        "MARKER|TODO|pkg/mod.py|1|",
+        "SUMMARY",
+        "TOTAL_MARKERS|1",
+        "TAG_TOTAL|TODO|1",
+    ]

@@ -2,9 +2,57 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections import Counter
+from pathlib import Path
 from typing import Sequence
 
-from .markers import scan_markers
+from .markers import MarkerRecord, scan_markers
+
+
+def _directory_for(path: str) -> str:
+    parent = Path(path).parent.as_posix()
+    return "." if parent in ("", ".") else parent
+
+
+def _marker_sort_key(marker: MarkerRecord) -> tuple[str, str, int, str, str]:
+    return (
+        _directory_for(marker.path),
+        marker.path,
+        marker.line,
+        marker.tag,
+        marker.text,
+    )
+
+
+def format_text_report(markers: Sequence[MarkerRecord]) -> list[str]:
+    sorted_markers = sorted(markers, key=_marker_sort_key)
+    counts = Counter(marker.tag for marker in sorted_markers)
+
+    lines: list[str] = []
+    current_directory: str | None = None
+    current_file: str | None = None
+
+    for marker in sorted_markers:
+        directory = _directory_for(marker.path)
+        if directory != current_directory:
+            lines.append(f"DIR|{directory}")
+            current_directory = directory
+            current_file = None
+
+        if marker.path != current_file:
+            lines.append(f"FILE|{marker.path}")
+            current_file = marker.path
+
+        lines.append(
+            f"MARKER|{marker.tag}|{marker.path}|{marker.line}|{marker.text}"
+        )
+
+    lines.append("SUMMARY")
+    lines.append(f"TOTAL_MARKERS|{len(sorted_markers)}")
+    for tag in sorted(counts):
+        lines.append(f"TAG_TOTAL|{tag}|{counts[tag]}")
+
+    return lines
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -65,11 +113,8 @@ def cli(argv: Sequence[str] | None = None) -> int:
             print(json.dumps([marker.as_dict() for marker in markers], indent=2))
             return 0
 
-        for marker in markers:
-            if marker.text:
-                print(f"{marker.path}:{marker.line}: {marker.tag}: {marker.text}")
-            else:
-                print(f"{marker.path}:{marker.line}: {marker.tag}")
+        for line in format_text_report(markers):
+            print(line)
         return 0
 
     parser.error(f"Unknown command: {args.command}")

@@ -78,17 +78,25 @@ todo-harvester scan . --format json > markers.json
 
 ### Text (`--format text`)
 
-One marker per line:
+Grouped output with stable, greppable line prefixes and a summary footer:
 
 ```text
-path/to/file.py:12: TODO: normalize user id
+DIR|src
+FILE|src/module/file.py
+MARKER|TODO|src/module/file.py|12|normalize user id
+MARKER|FIXME|src/module/file.py|27|handle null values
+SUMMARY
+TOTAL_MARKERS|2
+TAG_TOTAL|FIXME|1
+TAG_TOTAL|TODO|1
 ```
 
-If marker text is empty:
+Line types:
 
-```text
-path/to/file.py:12: TODO
-```
+- `DIR|<directory>` — directory group header.
+- `FILE|<path>` — file group header.
+- `MARKER|<tag>|<path>|<line>|<text>` — marker entry.
+- `SUMMARY` / `TOTAL_MARKERS|<n>` / `TAG_TOTAL|<tag>|<n>` — footer totals.
 
 ### JSON (`--format json`)
 

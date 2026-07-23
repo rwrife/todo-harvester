@@ -53,15 +53,27 @@ def test_scan_tags_filter_restricts_results(tmp_path: Path) -> None:
     ]
 
 
-def test_cli_scan_outputs_structured_marker_lines(tmp_path: Path, capsys) -> None:
+def test_cli_scan_outputs_grouped_text_report_with_summary(tmp_path: Path, capsys) -> None:
     (tmp_path / "pkg").mkdir()
-    (tmp_path / "pkg" / "mod.py").write_text("# TODO: wire endpoint\n", encoding="utf-8")
+    (tmp_path / "pkg" / "mod.py").write_text(
+        "# TODO: wire endpoint\n# FIXME: add retries\n",
+        encoding="utf-8",
+    )
 
     exit_code = cli(["scan", str(tmp_path)])
     output = capsys.readouterr().out.strip().splitlines()
 
     assert exit_code == 0
-    assert output == ["pkg/mod.py:1: TODO: wire endpoint"]
+    assert output == [
+        "DIR|pkg",
+        "FILE|pkg/mod.py",
+        "MARKER|TODO|pkg/mod.py|1|wire endpoint",
+        "MARKER|FIXME|pkg/mod.py|2|add retries",
+        "SUMMARY",
+        "TOTAL_MARKERS|2",
+        "TAG_TOTAL|FIXME|1",
+        "TAG_TOTAL|TODO|1",
+    ]
 
 
 def test_cli_scan_json_output(tmp_path: Path, capsys) -> None:
