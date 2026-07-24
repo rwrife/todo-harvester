@@ -47,7 +47,7 @@ def test_binary_and_undecodable_files_are_skipped(tmp_path: Path) -> None:
     assert files == ["src/keep.py"]
 
 
-def test_cli_scan_prints_marker_records(tmp_path: Path, capsys) -> None:
+def test_cli_scan_prints_grouped_text_report(tmp_path: Path, capsys) -> None:
     (tmp_path / "pkg").mkdir()
     (tmp_path / "pkg" / "mod.py").write_text("# TODO\n", encoding="utf-8")
 
@@ -55,4 +55,16 @@ def test_cli_scan_prints_marker_records(tmp_path: Path, capsys) -> None:
     output = capsys.readouterr().out.strip().splitlines()
 
     assert exit_code == 0
-    assert output == ["pkg/mod.py:1: TODO"]
+    assert output == [
+        "TODO Harvester Report",
+        "",
+        "Total markers: 1",
+        "",
+        "Grouped markers",
+        "[dir] pkg",
+        "[file] pkg/mod.py",
+        "pkg/mod.py:1: TODO",
+        "",
+        "Summary by tag",
+        "TODO: 1",
+    ]

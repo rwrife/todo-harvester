@@ -81,13 +81,33 @@ todo-harvester scan . --format markdown > marker-report.md
 
 ### Text (`--format text`)
 
-One marker per line:
+Default text output is a grouped report:
+
+- Header with total marker count
+- Grouped sections by directory and file
+- Stable marker line format (`path:line: TAG: message`) for grep/filters
+- Summary footer with per-tag totals
+
+Example:
 
 ```text
-path/to/file.py:12: TODO: normalize user id
+TODO Harvester Report
+
+Total markers: 2
+
+Grouped markers
+[dir] src
+[file] src/app.py
+src/app.py:12: TODO: normalize user id
+[file] src/db.py
+src/db.py:8: FIXME: retry transaction
+
+Summary by tag
+FIXME: 1
+TODO: 1
 ```
 
-If marker text is empty:
+If marker text is empty, the line stays stable:
 
 ```text
 path/to/file.py:12: TODO
