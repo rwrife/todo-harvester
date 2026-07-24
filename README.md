@@ -38,7 +38,7 @@ todo-harvester scan --help
 ## `scan` subcommand
 
 ```bash
-todo-harvester scan [root] [--exclude PATTERNS] [--absolute] [--tags TAGS] [--format {text,json}]
+todo-harvester scan [root] [--exclude PATTERNS] [--absolute] [--tags TAGS] [--format {text,json,markdown}]
 ```
 
 ### Arguments
@@ -49,7 +49,7 @@ todo-harvester scan [root] [--exclude PATTERNS] [--absolute] [--tags TAGS] [--fo
 | `--exclude` | comma-separated string | built-ins (`.git,node_modules,dist,build,__pycache__`) | Additional glob/path patterns to exclude. |
 | `--absolute` | flag | `false` | Print absolute file paths instead of paths relative to `root`. |
 | `--tags` | comma-separated string | `TODO,FIXME,HACK,XXX` | Restrict marker tags to match (case-insensitive). |
-| `--format` | `text` or `json` | `text` | Output format. |
+| `--format` | `text`, `json`, or `markdown` | `text` | Output format. |
 | `-h`, `--help` | flag | n/a | Show command help and exit. |
 
 ## Examples
@@ -72,6 +72,9 @@ todo-harvester scan . --absolute
 
 # JSON output
 todo-harvester scan . --format json > markers.json
+
+# Markdown report output
+todo-harvester scan . --format markdown > marker-report.md
 ```
 
 ## Output formats
@@ -94,15 +97,16 @@ path/to/file.py:12: TODO
 
 Outputs a JSON array of marker objects.
 
-#### JSON schema
+#### Stable JSON schema
 
 ```json
 [
   {
     "tag": "TODO",
     "text": "normalize user id",
-    "path": "src/module/file.py",
-    "line": 12
+    "file": "src/module/file.py",
+    "line": 12,
+    "count": 1
   }
 ]
 ```
@@ -111,8 +115,33 @@ Field definitions:
 
 - `tag` (`string`) — normalized uppercase marker tag.
 - `text` (`string`) — marker text after the tag (may be empty).
-- `path` (`string`) — file path (relative by default; absolute when `--absolute` is used).
+- `file` (`string`) — file path (relative by default; absolute when `--absolute` is used).
 - `line` (`integer`) — 1-based line number.
+- `count` (`integer`) — number of occurrences represented by the record (currently `1` per marker).
+
+### Markdown (`--format markdown`)
+
+Emits a headed digest suitable for docs/CI artifacts:
+
+- Report title and total marker count
+- Summary counts by tag
+- Grouped marker list by file with line numbers
+
+Example:
+
+```markdown
+# TODO Harvester Report
+
+Total markers: **2**
+
+## Summary by tag
+- **FIXME**: 1
+- **TODO**: 1
+
+## Markers by file
+### `pkg/a.py`
+- L1 **TODO**: first
+```
 
 ## Exit codes
 

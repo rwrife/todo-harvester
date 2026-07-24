@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter, defaultdict
 import json
-from typing import Sequence
+from typing import Iterable, Sequence
 
-from .markers import scan_markers
+from .markers import MarkerRecord, scan_markers
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -41,12 +42,52 @@ def build_parser() -> argparse.ArgumentParser:
     )
     scan_parser.add_argument(
         "--format",
-        choices=("text", "json"),
+        choices=("text", "json", "markdown"),
         default="text",
         help="Output format (default: text).",
     )
 
     return parser
+
+
+def _iter_text_lines(markers: Iterable[MarkerRecord]) -> Iterable[str]:
+    for marker in markers:
+        if marker.text:
+            yield f"{marker.path}:{marker.line}: {marker.tag}: {marker.text}"
+        else:
+            yield f"{marker.path}:{marker.line}: {marker.tag}"
+
+
+def _render_markdown(markers: list[MarkerRecord]) -> str:
+    lines: list[str] = ["# TODO Harvester Report", "", f"Total markers: **{len(markers)}**", ""]
+
+    lines.append("## Summary by tag")
+    if markers:
+        counts = Counter(marker.tag for marker in markers)
+        for tag in sorted(counts):
+            lines.append(f"- **{tag}**: {counts[tag]}")
+    else:
+        lines.append("- _No markers found._")
+
+    lines.append("")
+    lines.append("## Markers by file")
+    if markers:
+        grouped: defaultdict[str, list[MarkerRecord]] = defaultdict(list)
+        for marker in markers:
+            grouped[marker.path].append(marker)
+
+        for file_path in sorted(grouped):
+            lines.append(f"### `{file_path}`")
+            for marker in sorted(grouped[file_path], key=lambda item: (item.line, item.tag, item.text)):
+                if marker.text:
+                    lines.append(f"- L{marker.line} **{marker.tag}**: {marker.text}")
+                else:
+                    lines.append(f"- L{marker.line} **{marker.tag}**")
+            lines.append("")
+    else:
+        lines.append("- _No markers found._")
+
+    return "\n".join(lines).rstrip()
 
 
 def cli(argv: Sequence[str] | None = None) -> int:
@@ -62,14 +103,15 @@ def cli(argv: Sequence[str] | None = None) -> int:
         )
 
         if args.format == "json":
-            print(json.dumps([marker.as_dict() for marker in markers], indent=2))
+            print(json.dumps([marker.as_json_dict() for marker in markers], indent=2))
             return 0
 
-        for marker in markers:
-            if marker.text:
-                print(f"{marker.path}:{marker.line}: {marker.tag}: {marker.text}")
-            else:
-                print(f"{marker.path}:{marker.line}: {marker.tag}")
+        if args.format == "markdown":
+            print(_render_markdown(markers))
+            return 0
+
+        for line in _iter_text_lines(markers):
+            print(line)
         return 0
 
     parser.error(f"Unknown command: {args.command}")

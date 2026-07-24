@@ -25,6 +25,15 @@ class MarkerRecord:
             "line": self.line,
         }
 
+    def as_json_dict(self) -> dict[str, str | int]:
+        return {
+            "tag": self.tag,
+            "text": self.text,
+            "file": self.path,
+            "line": self.line,
+            "count": 1,
+        }
+
 
 def parse_tags(tags: str | Sequence[str] | None) -> list[str]:
     if tags is None:
