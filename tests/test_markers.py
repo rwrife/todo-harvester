@@ -53,7 +53,7 @@ def test_scan_tags_filter_restricts_results(tmp_path: Path) -> None:
     ]
 
 
-def test_cli_scan_outputs_structured_marker_lines(tmp_path: Path, capsys) -> None:
+def test_cli_scan_text_output_is_grouped_with_summary(tmp_path: Path, capsys) -> None:
     (tmp_path / "pkg").mkdir()
     (tmp_path / "pkg" / "mod.py").write_text("# TODO: wire endpoint\n", encoding="utf-8")
 
@@ -61,7 +61,19 @@ def test_cli_scan_outputs_structured_marker_lines(tmp_path: Path, capsys) -> Non
     output = capsys.readouterr().out.strip().splitlines()
 
     assert exit_code == 0
-    assert output == ["pkg/mod.py:1: TODO: wire endpoint"]
+    assert output == [
+        "TODO Harvester Report",
+        "",
+        "Total markers: 1",
+        "",
+        "Grouped markers",
+        "[dir] pkg",
+        "[file] pkg/mod.py",
+        "pkg/mod.py:1: TODO: wire endpoint",
+        "",
+        "Summary by tag",
+        "TODO: 1",
+    ]
 
 
 def test_cli_scan_json_output_schema_round_trip(tmp_path: Path, capsys) -> None:
@@ -110,4 +122,34 @@ def test_cli_scan_markdown_output(tmp_path: Path, capsys) -> None:
         "",
         "### `pkg/b.py`",
         "- L1 **FIXME**: second",
+    ]
+
+
+def test_cli_scan_text_output_groups_by_directory_and_file(tmp_path: Path, capsys) -> None:
+    (tmp_path / "pkg" / "sub").mkdir(parents=True)
+    (tmp_path / "pkg" / "a.py").write_text("# TODO: one\n# FIXME: two\n", encoding="utf-8")
+    (tmp_path / "pkg" / "sub" / "b.py").write_text("# HACK: three\n", encoding="utf-8")
+
+    exit_code = cli(["scan", str(tmp_path), "--format", "text"])
+    output = capsys.readouterr().out.strip().splitlines()
+
+    assert exit_code == 0
+    assert output == [
+        "TODO Harvester Report",
+        "",
+        "Total markers: 3",
+        "",
+        "Grouped markers",
+        "[dir] pkg",
+        "[file] pkg/a.py",
+        "pkg/a.py:1: TODO: one",
+        "pkg/a.py:2: FIXME: two",
+        "[dir] pkg/sub",
+        "[file] pkg/sub/b.py",
+        "pkg/sub/b.py:1: HACK: three",
+        "",
+        "Summary by tag",
+        "FIXME: 1",
+        "HACK: 1",
+        "TODO: 1",
     ]

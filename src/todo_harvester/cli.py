@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter, defaultdict
 import json
+from pathlib import Path
 from typing import Iterable, Sequence
 
 from .markers import MarkerRecord, scan_markers
@@ -50,12 +51,51 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _format_marker_line(marker: MarkerRecord) -> str:
+    if marker.text:
+        return f"{marker.path}:{marker.line}: {marker.tag}: {marker.text}"
+    return f"{marker.path}:{marker.line}: {marker.tag}"
+
+
 def _iter_text_lines(markers: Iterable[MarkerRecord]) -> Iterable[str]:
     for marker in markers:
-        if marker.text:
-            yield f"{marker.path}:{marker.line}: {marker.tag}: {marker.text}"
-        else:
-            yield f"{marker.path}:{marker.line}: {marker.tag}"
+        yield _format_marker_line(marker)
+
+
+def _render_grouped_text(markers: list[MarkerRecord]) -> str:
+    lines: list[str] = ["TODO Harvester Report", "", f"Total markers: {len(markers)}", ""]
+
+    lines.append("Grouped markers")
+    if markers:
+        grouped: defaultdict[str, defaultdict[str, list[MarkerRecord]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        for marker in markers:
+            directory = Path(marker.path).parent.as_posix() or "."
+            grouped[directory][marker.path].append(marker)
+
+        for directory in sorted(grouped):
+            lines.append(f"[dir] {directory}")
+            for file_path in sorted(grouped[directory]):
+                lines.append(f"[file] {file_path}")
+                for marker in sorted(
+                    grouped[directory][file_path], key=lambda item: (item.line, item.tag, item.text)
+                ):
+                    lines.append(_format_marker_line(marker))
+        lines.append("")
+    else:
+        lines.append("No markers found.")
+        lines.append("")
+
+    lines.append("Summary by tag")
+    if markers:
+        counts = Counter(marker.tag for marker in markers)
+        for tag in sorted(counts):
+            lines.append(f"{tag}: {counts[tag]}")
+    else:
+        lines.append("(none)")
+
+    return "\n".join(lines).rstrip()
 
 
 def _render_markdown(markers: list[MarkerRecord]) -> str:
@@ -110,8 +150,7 @@ def cli(argv: Sequence[str] | None = None) -> int:
             print(_render_markdown(markers))
             return 0
 
-        for line in _iter_text_lines(markers):
-            print(line)
+        print(_render_grouped_text(markers))
         return 0
 
     parser.error(f"Unknown command: {args.command}")
