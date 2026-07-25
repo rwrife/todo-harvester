@@ -38,7 +38,7 @@ todo-harvester scan --help
 ## `scan` subcommand
 
 ```bash
-todo-harvester scan [root] [--exclude PATTERNS] [--absolute] [--tags TAGS] [--format {text,json,markdown}]
+todo-harvester scan [root] [--exclude PATTERNS] [--absolute] [--tags TAGS] [--format {text,json,markdown}] [--no-dedup]
 ```
 
 ### Arguments
@@ -50,6 +50,7 @@ todo-harvester scan [root] [--exclude PATTERNS] [--absolute] [--tags TAGS] [--fo
 | `--absolute` | flag | `false` | Print absolute file paths instead of paths relative to `root`. |
 | `--tags` | comma-separated string | `TODO,FIXME,HACK,XXX` | Restrict marker tags to match (case-insensitive). |
 | `--format` | `text`, `json`, or `markdown` | `text` | Output format. |
+| `--no-dedup` | flag | `false` | Disable duplicate collapsing (default behavior deduplicates markers with the same tag and normalized text). |
 | `-h`, `--help` | flag | n/a | Show command help and exit. |
 
 ## Examples
@@ -73,6 +74,9 @@ todo-harvester scan . --absolute
 # JSON output
 todo-harvester scan . --format json > markers.json
 
+# Keep duplicate markers separate
+todo-harvester scan . --format json --no-dedup
+
 # Markdown report output
 todo-harvester scan . --format markdown > marker-report.md
 ```
@@ -86,6 +90,7 @@ Default text output is a grouped report:
 - Header with total marker count
 - Grouped sections by directory and file
 - Stable marker line format (`path:line: TAG: message`) for grep/filters
+- Duplicate markers (same tag + normalized text) are collapsed and include count/location metadata
 - Summary footer with per-tag totals
 
 Example:
@@ -126,7 +131,11 @@ Outputs a JSON array of marker objects.
     "text": "normalize user id",
     "file": "src/module/file.py",
     "line": 12,
-    "count": 1
+    "count": 2,
+    "locations": [
+      {"file": "src/module/file.py", "line": 12},
+      {"file": "src/module/other.py", "line": 44}
+    ]
   }
 ]
 ```
@@ -135,9 +144,10 @@ Field definitions:
 
 - `tag` (`string`) — normalized uppercase marker tag.
 - `text` (`string`) — marker text after the tag (may be empty).
-- `file` (`string`) — file path (relative by default; absolute when `--absolute` is used).
-- `line` (`integer`) — 1-based line number.
-- `count` (`integer`) — number of occurrences represented by the record (currently `1` per marker).
+- `file` (`string`) — representative file path (relative by default; absolute when `--absolute` is used).
+- `line` (`integer`) — representative 1-based line number.
+- `count` (`integer`) — number of occurrences represented by the record.
+- `locations` (`array`) — all source occurrences as `{ "file": string, "line": integer }` entries.
 
 ### Markdown (`--format markdown`)
 

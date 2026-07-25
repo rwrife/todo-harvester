@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from .markers import MarkerRecord, scan_markers
+from .markers import MarkerRecord, deduplicate_markers, scan_markers
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -47,14 +47,26 @@ def build_parser() -> argparse.ArgumentParser:
         default="text",
         help="Output format (default: text).",
     )
+    scan_parser.add_argument(
+        "--no-dedup",
+        action="store_true",
+        help="Disable duplicate marker collapsing (enabled by default).",
+    )
 
     return parser
 
 
 def _format_marker_line(marker: MarkerRecord) -> str:
     if marker.text:
-        return f"{marker.path}:{marker.line}: {marker.tag}: {marker.text}"
-    return f"{marker.path}:{marker.line}: {marker.tag}"
+        base = f"{marker.path}:{marker.line}: {marker.tag}: {marker.text}"
+    else:
+        base = f"{marker.path}:{marker.line}: {marker.tag}"
+
+    if marker.count <= 1:
+        return base
+
+    locations = ", ".join(f"{file_path}:{line_number}" for file_path, line_number in marker.locations)
+    return f"{base} [count={marker.count}; locations={locations}]"
 
 
 def _iter_text_lines(markers: Iterable[MarkerRecord]) -> Iterable[str]:
@@ -63,7 +75,8 @@ def _iter_text_lines(markers: Iterable[MarkerRecord]) -> Iterable[str]:
 
 
 def _render_grouped_text(markers: list[MarkerRecord]) -> str:
-    lines: list[str] = ["TODO Harvester Report", "", f"Total markers: {len(markers)}", ""]
+    total_markers = sum(marker.count for marker in markers)
+    lines: list[str] = ["TODO Harvester Report", "", f"Total markers: {total_markers}", ""]
 
     lines.append("Grouped markers")
     if markers:
@@ -89,7 +102,9 @@ def _render_grouped_text(markers: list[MarkerRecord]) -> str:
 
     lines.append("Summary by tag")
     if markers:
-        counts = Counter(marker.tag for marker in markers)
+        counts = Counter()
+        for marker in markers:
+            counts[marker.tag] += marker.count
         for tag in sorted(counts):
             lines.append(f"{tag}: {counts[tag]}")
     else:
@@ -99,11 +114,14 @@ def _render_grouped_text(markers: list[MarkerRecord]) -> str:
 
 
 def _render_markdown(markers: list[MarkerRecord]) -> str:
-    lines: list[str] = ["# TODO Harvester Report", "", f"Total markers: **{len(markers)}**", ""]
+    total_markers = sum(marker.count for marker in markers)
+    lines: list[str] = ["# TODO Harvester Report", "", f"Total markers: **{total_markers}**", ""]
 
     lines.append("## Summary by tag")
     if markers:
-        counts = Counter(marker.tag for marker in markers)
+        counts = Counter()
+        for marker in markers:
+            counts[marker.tag] += marker.count
         for tag in sorted(counts):
             lines.append(f"- **{tag}**: {counts[tag]}")
     else:
@@ -120,9 +138,18 @@ def _render_markdown(markers: list[MarkerRecord]) -> str:
             lines.append(f"### `{file_path}`")
             for marker in sorted(grouped[file_path], key=lambda item: (item.line, item.tag, item.text)):
                 if marker.text:
-                    lines.append(f"- L{marker.line} **{marker.tag}**: {marker.text}")
+                    line = f"- L{marker.line} **{marker.tag}**: {marker.text}"
                 else:
-                    lines.append(f"- L{marker.line} **{marker.tag}**")
+                    line = f"- L{marker.line} **{marker.tag}**"
+
+                if marker.count > 1:
+                    locations = ", ".join(
+                        f"{location_path}:{location_line}"
+                        for location_path, location_line in marker.locations
+                    )
+                    line = f"{line} _(x{marker.count}; locations: {locations})_"
+
+                lines.append(line)
             lines.append("")
     else:
         lines.append("- _No markers found._")
@@ -141,6 +168,9 @@ def cli(argv: Sequence[str] | None = None) -> int:
             tags=args.tags,
             relative=not args.absolute,
         )
+
+        if not args.no_dedup:
+            markers = deduplicate_markers(markers)
 
         if args.format == "json":
             print(json.dumps([marker.as_json_dict() for marker in markers], indent=2))

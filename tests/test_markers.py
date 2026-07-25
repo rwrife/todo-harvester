@@ -92,9 +92,10 @@ def test_cli_scan_json_output_schema_round_trip(tmp_path: Path, capsys) -> None:
             "file": "pkg/mod.py",
             "line": 1,
             "count": 1,
+            "locations": [{"file": "pkg/mod.py", "line": 1}],
         }
     ]
-    assert set(payload[0]) == {"tag", "text", "file", "line", "count"}
+    assert set(payload[0]) == {"tag", "text", "file", "line", "count", "locations"}
     assert json.loads(json.dumps(payload)) == payload
 
 
@@ -152,4 +153,57 @@ def test_cli_scan_text_output_groups_by_directory_and_file(tmp_path: Path, capsy
         "FIXME: 1",
         "HACK: 1",
         "TODO: 1",
+    ]
+
+
+def test_cli_scan_deduplicates_normalized_markers_by_default(tmp_path: Path, capsys) -> None:
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "a.py").write_text("# TODO: Fill In\n", encoding="utf-8")
+    (tmp_path / "pkg" / "b.py").write_text("# TODO:  fill   in\n", encoding="utf-8")
+
+    exit_code = cli(["scan", str(tmp_path), "--format", "json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload == [
+        {
+            "tag": "TODO",
+            "text": "Fill In",
+            "file": "pkg/a.py",
+            "line": 1,
+            "count": 2,
+            "locations": [
+                {"file": "pkg/a.py", "line": 1},
+                {"file": "pkg/b.py", "line": 1},
+            ],
+        }
+    ]
+
+
+def test_cli_scan_no_dedup_keeps_duplicate_markers(tmp_path: Path, capsys) -> None:
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "a.py").write_text("# TODO: Fill In\n", encoding="utf-8")
+    (tmp_path / "pkg" / "b.py").write_text("# TODO:  fill   in\n", encoding="utf-8")
+
+    exit_code = cli(["scan", str(tmp_path), "--format", "json", "--no-dedup"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload == [
+        {
+            "tag": "TODO",
+            "text": "Fill In",
+            "file": "pkg/a.py",
+            "line": 1,
+            "count": 1,
+            "locations": [{"file": "pkg/a.py", "line": 1}],
+        },
+        {
+            "tag": "TODO",
+            "text": "fill   in",
+            "file": "pkg/b.py",
+            "line": 1,
+            "count": 1,
+            "locations": [{"file": "pkg/b.py", "line": 1}],
+        },
     ]
