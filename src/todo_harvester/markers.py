@@ -130,10 +130,9 @@ def deduplicate_markers(markers: Sequence[MarkerRecord]) -> list[MarkerRecord]:
 
     deduped: list[MarkerRecord] = []
     for duplicate_set in grouped.values():
-        representative = duplicate_set[0]
-        ordered_locations = tuple(
-            (item.path, item.line) for item in sorted(duplicate_set, key=lambda item: (item.path, item.line))
-        )
+        ordered_duplicates = sorted(duplicate_set, key=lambda item: (item.path, item.line))
+        representative = ordered_duplicates[0]
+        ordered_locations = tuple((item.path, item.line) for item in ordered_duplicates)
         deduped.append(
             MarkerRecord(
                 tag=representative.tag,
