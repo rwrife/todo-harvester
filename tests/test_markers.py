@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 
 from todo_harvester.cli import cli
 from todo_harvester.markers import scan_markers
@@ -206,4 +207,56 @@ def test_cli_scan_no_dedup_keeps_duplicate_markers(tmp_path: Path, capsys) -> No
             "count": 1,
             "locations": [{"file": "pkg/b.py", "line": 1}],
         },
+    ]
+
+
+def test_cli_scan_max_threshold_exits_nonzero_when_exceeded(tmp_path: Path, capsys) -> None:
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "mod.py").write_text("# TODO: one\n", encoding="utf-8")
+
+    exit_code = cli(["scan", str(tmp_path), "--max", "0"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "Total markers: 1" in output
+
+
+def test_cli_scan_max_threshold_succeeds_when_within_limit(tmp_path: Path, capsys) -> None:
+    exit_code = cli(["scan", str(tmp_path), "--max", "0"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "Total markers: 0" in output
+
+
+def test_cli_diff_lists_only_markers_added_since_ref(tmp_path: Path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+
+    (repo / "pkg").mkdir()
+    file_path = repo / "pkg" / "mod.py"
+    file_path.write_text("# TODO: existing\n", encoding="utf-8")
+
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "baseline"], cwd=repo, check=True, capture_output=True, text=True)
+
+    file_path.write_text("# TODO: existing\n# FIXME: newly added\n", encoding="utf-8")
+
+    exit_code = cli(["diff", "HEAD", str(repo), "--format", "json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload == [
+        {
+            "tag": "FIXME",
+            "text": "newly added",
+            "file": "pkg/mod.py",
+            "line": 2,
+            "count": 1,
+            "locations": [{"file": "pkg/mod.py", "line": 2}],
+        }
     ]

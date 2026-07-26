@@ -24,21 +24,23 @@ python -m pip install -e .
 
 ## CLI overview
 
-`todo-harvester` currently exposes one subcommand:
+`todo-harvester` exposes two subcommands:
 
 - `scan` — recursively scan files and extract marker comments.
+- `diff` — compare current markers against a base git ref and report newly added markers.
 
 Run help at any level:
 
 ```bash
 todo-harvester --help
 todo-harvester scan --help
+todo-harvester diff --help
 ```
 
 ## `scan` subcommand
 
 ```bash
-todo-harvester scan [root] [--exclude PATTERNS] [--absolute] [--tags TAGS] [--format {text,json,markdown}] [--no-dedup]
+todo-harvester scan [root] [--exclude PATTERNS] [--absolute] [--tags TAGS] [--format {text,json,markdown}] [--no-dedup] [--max N]
 ```
 
 ### Arguments
@@ -51,6 +53,7 @@ todo-harvester scan [root] [--exclude PATTERNS] [--absolute] [--tags TAGS] [--fo
 | `--tags` | comma-separated string | `TODO,FIXME,HACK,XXX` | Restrict marker tags to match (case-insensitive). |
 | `--format` | `text`, `json`, or `markdown` | `text` | Output format. |
 | `--no-dedup` | flag | `false` | Disable duplicate collapsing (default behavior deduplicates markers with the same tag and normalized text). |
+| `--max` | integer | unset | Exit with code `1` when total markers exceed `N` (useful for CI thresholds). |
 | `-h`, `--help` | flag | n/a | Show command help and exit. |
 
 ## Examples
@@ -77,9 +80,24 @@ todo-harvester scan . --format json > markers.json
 # Keep duplicate markers separate
 todo-harvester scan . --format json --no-dedup
 
+# Fail CI if any marker exists
+todo-harvester scan . --max 0
+
 # Markdown report output
 todo-harvester scan . --format markdown > marker-report.md
+
+# Show markers newly introduced since origin/main
+todo-harvester diff origin/main --format json
 ```
+
+## `diff` subcommand
+
+```bash
+todo-harvester diff <ref> [root] [--exclude PATTERNS] [--absolute] [--tags TAGS] [--format {text,json,markdown}] [--no-dedup]
+```
+
+`diff` scans the current working tree and compares it with marker output from the
+same path at `<ref>`, then prints only markers that are newly introduced.
 
 ## Output formats
 
@@ -177,8 +195,9 @@ Total markers: **2**
 
 | Code | Meaning |
 |---|---|
-| `0` | Successful scan and output generation. |
-| `2` | CLI usage/argument error (argparse). |
+| `0` | Successful scan/diff output generation. |
+| `1` | `scan --max N` threshold exceeded (marker count > `N`). |
+| `2` | CLI usage/argument error, or git-ref resolution failure for `diff`. |
 
 ## Development
 
