@@ -97,14 +97,14 @@ def walk_candidate_files(
         current_dir = Path(dirpath)
 
         kept_dirs: list[str] = []
-        for dirname in dirnames:
+        for dirname in sorted(dirnames):
             child_dir = current_dir / dirname
             if should_exclude(child_dir, root_path, patterns):
                 continue
             kept_dirs.append(dirname)
         dirnames[:] = kept_dirs
 
-        for filename in filenames:
+        for filename in sorted(filenames):
             candidate = current_dir / filename
             if should_exclude(candidate, root_path, patterns):
                 continue

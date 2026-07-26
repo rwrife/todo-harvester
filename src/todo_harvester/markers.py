@@ -16,22 +16,39 @@ class MarkerRecord:
     text: str
     path: str
     line: int
+    count: int = 1
+    locations: tuple[tuple[str, int], ...] = ()
 
-    def as_dict(self) -> dict[str, str | int]:
+    def __post_init__(self) -> None:
+        if self.count < 1:
+            raise ValueError("count must be >= 1")
+        if not self.locations:
+            object.__setattr__(self, "locations", ((self.path, self.line),))
+
+    def as_dict(self) -> dict[str, str | int | list[dict[str, str | int]]]:
         return {
             "tag": self.tag,
             "text": self.text,
             "path": self.path,
             "line": self.line,
+            "count": self.count,
+            "locations": [
+                {"file": file_path, "line": line_number}
+                for file_path, line_number in self.locations
+            ],
         }
 
-    def as_json_dict(self) -> dict[str, str | int]:
+    def as_json_dict(self) -> dict[str, str | int | list[dict[str, str | int]]]:
         return {
             "tag": self.tag,
             "text": self.text,
             "file": self.path,
             "line": self.line,
-            "count": 1,
+            "count": self.count,
+            "locations": [
+                {"file": file_path, "line": line_number}
+                for file_path, line_number in self.locations
+            ],
         }
 
 
@@ -98,6 +115,36 @@ def _extract_marker_from_line(
     prefix = match.group("prefix")
     text = _normalize_marker_text(prefix, match.group("text") or "")
     return tag, text
+
+
+def _normalize_for_dedup(text: str) -> str:
+    return " ".join(text.casefold().split())
+
+
+def deduplicate_markers(markers: Sequence[MarkerRecord]) -> list[MarkerRecord]:
+    grouped: dict[tuple[str, str], list[MarkerRecord]] = {}
+
+    for marker in markers:
+        key = (marker.tag, _normalize_for_dedup(marker.text))
+        grouped.setdefault(key, []).append(marker)
+
+    deduped: list[MarkerRecord] = []
+    for duplicate_set in grouped.values():
+        ordered_duplicates = sorted(duplicate_set, key=lambda item: (item.path, item.line))
+        representative = ordered_duplicates[0]
+        ordered_locations = tuple((item.path, item.line) for item in ordered_duplicates)
+        deduped.append(
+            MarkerRecord(
+                tag=representative.tag,
+                text=representative.text,
+                path=ordered_locations[0][0],
+                line=ordered_locations[0][1],
+                count=len(duplicate_set),
+                locations=ordered_locations,
+            )
+        )
+
+    return sorted(deduped, key=lambda item: (item.path, item.line, item.tag, item.text.casefold()))
 
 
 def scan_markers(
