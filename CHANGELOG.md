@@ -7,6 +7,9 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 ## [Unreleased]
 
 ### Added
+- `scan --blame` and `diff --blame` to annotate markers with git blame author/date for tracked files.
+- `scan --sort age` and `diff --sort age` to order markers by staleness (oldest blamed lines first).
+- Graceful blame fallback for untracked files (no crash; attribution fields omitted).
 - Marker deduplication by normalized text+tag with collapsed `count` and full `locations` metadata.
 - `scan --no-dedup` flag to preserve one-record-per-marker behavior.
 - `scan --format json` output mode for machine-readable marker reports.

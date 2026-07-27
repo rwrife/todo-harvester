@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 import io
 import json
 from pathlib import Path
@@ -57,6 +58,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Disable duplicate marker collapsing (enabled by default).",
     )
     scan_parser.add_argument(
+        "--blame",
+        action="store_true",
+        help="Annotate markers with git blame author/date when available.",
+    )
+    scan_parser.add_argument(
+        "--sort",
+        choices=("path", "age"),
+        default="path",
+        help="Sort markers by path/line (default) or by oldest blame date first.",
+    )
+    scan_parser.add_argument(
         "--max",
         type=int,
         default=None,
@@ -100,8 +112,145 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Disable duplicate marker collapsing (enabled by default).",
     )
+    diff_parser.add_argument(
+        "--blame",
+        action="store_true",
+        help="Annotate markers with git blame author/date when available.",
+    )
+    diff_parser.add_argument(
+        "--sort",
+        choices=("path", "age"),
+        default="path",
+        help="Sort markers by path/line (default) or by oldest blame date first.",
+    )
 
     return parser
+
+
+def _get_git_repo_context(root: str | Path) -> tuple[Path, str] | None:
+    root_path = Path(root).resolve()
+    repo_result = subprocess.run(
+        ["git", "-C", str(root_path), "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if repo_result.returncode != 0:
+        return None
+
+    repo_root = Path(repo_result.stdout.strip()).resolve()
+    try:
+        relative_root = root_path.relative_to(repo_root).as_posix()
+    except ValueError:
+        return None
+
+    if relative_root == ".":
+        relative_root = ""
+
+    return repo_root, relative_root
+
+
+def _parse_blame_porcelain(output: str) -> tuple[str, str, int] | None:
+    author: str | None = None
+    authored_timestamp: int | None = None
+
+    for line in output.splitlines():
+        if line.startswith("author "):
+            author = line.removeprefix("author ").strip()
+        elif line.startswith("author-time "):
+            try:
+                authored_timestamp = int(line.removeprefix("author-time ").strip())
+            except ValueError:
+                authored_timestamp = None
+
+        if author is not None and authored_timestamp is not None:
+            break
+
+    if author is None or authored_timestamp is None:
+        return None
+
+    authored_date = datetime.fromtimestamp(authored_timestamp, tz=timezone.utc).date().isoformat()
+    return author, authored_date, authored_timestamp
+
+
+def _with_git_blame(markers: list[MarkerRecord], root: str | Path) -> list[MarkerRecord]:
+    if not markers:
+        return markers
+
+    context = _get_git_repo_context(root)
+    if context is None:
+        return markers
+
+    repo_root, relative_root = context
+    blame_cache: dict[tuple[str, int], tuple[str, str, int] | None] = {}
+    enriched: list[MarkerRecord] = []
+
+    for marker in markers:
+        repo_relative_path = (
+            Path(relative_root, marker.path).as_posix() if relative_root else Path(marker.path).as_posix()
+        )
+        cache_key = (repo_relative_path, marker.line)
+
+        if cache_key not in blame_cache:
+            blame_result = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(repo_root),
+                    "blame",
+                    "--porcelain",
+                    "-L",
+                    f"{marker.line},{marker.line}",
+                    "--",
+                    repo_relative_path,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if blame_result.returncode != 0:
+                blame_cache[cache_key] = None
+            else:
+                blame_cache[cache_key] = _parse_blame_porcelain(blame_result.stdout)
+
+        blame = blame_cache[cache_key]
+        if blame is None:
+            enriched.append(marker)
+            continue
+
+        author, authored_date, authored_timestamp = blame
+        enriched.append(
+            MarkerRecord(
+                tag=marker.tag,
+                text=marker.text,
+                path=marker.path,
+                line=marker.line,
+                count=marker.count,
+                locations=marker.locations,
+                author=author,
+                authored_date=authored_date,
+                authored_timestamp=authored_timestamp,
+            )
+        )
+
+    return enriched
+
+
+def _sort_markers(markers: list[MarkerRecord], sort_mode: str) -> list[MarkerRecord]:
+    if sort_mode == "age":
+        return sorted(
+            markers,
+            key=lambda item: (
+                item.authored_timestamp is None,
+                item.authored_timestamp if item.authored_timestamp is not None else 0,
+                item.path,
+                item.line,
+                item.tag,
+                item.text.casefold(),
+            ),
+        )
+
+    return sorted(markers, key=lambda item: (item.path, item.line, item.tag, item.text.casefold()))
 
 
 def _format_marker_line(marker: MarkerRecord) -> str:
@@ -110,11 +259,21 @@ def _format_marker_line(marker: MarkerRecord) -> str:
     else:
         base = f"{marker.path}:{marker.line}: {marker.tag}"
 
-    if marker.count <= 1:
-        return base
+    metadata: list[str] = []
+    if marker.count > 1:
+        locations = ", ".join(f"{file_path}:{line_number}" for file_path, line_number in marker.locations)
+        metadata.append(f"count={marker.count}")
+        metadata.append(f"locations={locations}")
 
-    locations = ", ".join(f"{file_path}:{line_number}" for file_path, line_number in marker.locations)
-    return f"{base} [count={marker.count}; locations={locations}]"
+    if marker.author is not None:
+        metadata.append(f"author={marker.author}")
+    if marker.authored_date is not None:
+        metadata.append(f"date={marker.authored_date}")
+
+    if metadata:
+        return f"{base} [{'; '.join(metadata)}]"
+
+    return base
 
 
 def _iter_text_lines(markers: Iterable[MarkerRecord]) -> Iterable[str]:
@@ -190,12 +349,21 @@ def _render_markdown(markers: list[MarkerRecord]) -> str:
                 else:
                     line = f"- L{marker.line} **{marker.tag}**"
 
+                metadata_notes: list[str] = []
                 if marker.count > 1:
                     locations = ", ".join(
                         f"{location_path}:{location_line}"
                         for location_path, location_line in marker.locations
                     )
-                    line = f"{line} _(x{marker.count}; locations: {locations})_"
+                    metadata_notes.append(f"x{marker.count}; locations: {locations}")
+
+                if marker.author is not None:
+                    metadata_notes.append(f"author: {marker.author}")
+                if marker.authored_date is not None:
+                    metadata_notes.append(f"date: {marker.authored_date}")
+
+                if metadata_notes:
+                    line = f"{line} _({'; '.join(metadata_notes)})_"
 
                 lines.append(line)
             lines.append("")
@@ -234,6 +402,9 @@ def _with_absolute_paths(markers: list[MarkerRecord], root: str | Path) -> list[
                 line=absolute_locations[0][1],
                 count=marker.count,
                 locations=absolute_locations,
+                author=marker.author,
+                authored_date=marker.authored_date,
+                authored_timestamp=marker.authored_timestamp,
             )
         )
 
@@ -320,6 +491,11 @@ def cli(argv: Sequence[str] | None = None) -> int:
         if not args.no_dedup:
             markers = deduplicate_markers(markers)
 
+        if args.blame or args.sort == "age":
+            markers = _with_git_blame(markers, args.root)
+
+        markers = _sort_markers(markers, args.sort)
+
         if args.absolute:
             markers = _with_absolute_paths(markers, args.root)
 
@@ -356,6 +532,11 @@ def cli(argv: Sequence[str] | None = None) -> int:
 
         if not args.no_dedup:
             added_markers = deduplicate_markers(added_markers)
+
+        if args.blame or args.sort == "age":
+            added_markers = _with_git_blame(added_markers, args.root)
+
+        added_markers = _sort_markers(added_markers, args.sort)
 
         if args.absolute:
             added_markers = _with_absolute_paths(added_markers, args.root)
