@@ -18,6 +18,9 @@ class MarkerRecord:
     line: int
     count: int = 1
     locations: tuple[tuple[str, int], ...] = ()
+    author: str | None = None
+    authored_date: str | None = None
+    authored_timestamp: int | None = None
 
     def __post_init__(self) -> None:
         if self.count < 1:
@@ -26,7 +29,7 @@ class MarkerRecord:
             object.__setattr__(self, "locations", ((self.path, self.line),))
 
     def as_dict(self) -> dict[str, str | int | list[dict[str, str | int]]]:
-        return {
+        payload: dict[str, str | int | list[dict[str, str | int]]] = {
             "tag": self.tag,
             "text": self.text,
             "path": self.path,
@@ -37,9 +40,14 @@ class MarkerRecord:
                 for file_path, line_number in self.locations
             ],
         }
+        if self.author is not None:
+            payload["author"] = self.author
+        if self.authored_date is not None:
+            payload["date"] = self.authored_date
+        return payload
 
     def as_json_dict(self) -> dict[str, str | int | list[dict[str, str | int]]]:
-        return {
+        payload: dict[str, str | int | list[dict[str, str | int]]] = {
             "tag": self.tag,
             "text": self.text,
             "file": self.path,
@@ -50,6 +58,11 @@ class MarkerRecord:
                 for file_path, line_number in self.locations
             ],
         }
+        if self.author is not None:
+            payload["author"] = self.author
+        if self.authored_date is not None:
+            payload["date"] = self.authored_date
+        return payload
 
 
 def parse_tags(tags: str | Sequence[str] | None) -> list[str]:

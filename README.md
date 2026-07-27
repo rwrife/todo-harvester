@@ -40,7 +40,7 @@ todo-harvester diff --help
 ## `scan` subcommand
 
 ```bash
-todo-harvester scan [root] [--exclude PATTERNS] [--absolute] [--tags TAGS] [--format {text,json,markdown}] [--no-dedup] [--max N]
+todo-harvester scan [root] [--exclude PATTERNS] [--absolute] [--tags TAGS] [--format {text,json,markdown}] [--no-dedup] [--blame] [--sort {path,age}] [--max N]
 ```
 
 ### Arguments
@@ -53,6 +53,8 @@ todo-harvester scan [root] [--exclude PATTERNS] [--absolute] [--tags TAGS] [--fo
 | `--tags` | comma-separated string | `TODO,FIXME,HACK,XXX` | Restrict marker tags to match (case-insensitive). |
 | `--format` | `text`, `json`, or `markdown` | `text` | Output format. |
 | `--no-dedup` | flag | `false` | Disable duplicate collapsing (default behavior deduplicates markers with the same tag and normalized text). |
+| `--blame` | flag | `false` | Add `author` + `date` metadata using `git blame --porcelain` for tracked files. |
+| `--sort` | `path` or `age` | `path` | Sort by file/line (default) or by staleness (`age` = oldest blame date first). |
 | `--max` | integer | unset | Exit with code `1` when total markers exceed `N` (useful for CI thresholds). |
 | `-h`, `--help` | flag | n/a | Show command help and exit. |
 
@@ -80,6 +82,12 @@ todo-harvester scan . --format json > markers.json
 # Keep duplicate markers separate
 todo-harvester scan . --format json --no-dedup
 
+# Include git blame attribution (tracked files)
+todo-harvester scan . --format json --blame
+
+# Sort by staleness (oldest blamed lines first)
+todo-harvester scan . --sort age --blame
+
 # Fail CI if any marker exists
 todo-harvester scan . --max 0
 
@@ -93,7 +101,7 @@ todo-harvester diff origin/main --format json
 ## `diff` subcommand
 
 ```bash
-todo-harvester diff <ref> [root] [--exclude PATTERNS] [--absolute] [--tags TAGS] [--format {text,json,markdown}] [--no-dedup]
+todo-harvester diff <ref> [root] [--exclude PATTERNS] [--absolute] [--tags TAGS] [--format {text,json,markdown}] [--no-dedup] [--blame] [--sort {path,age}]
 ```
 
 `diff` scans the current working tree and compares it with marker output from the
@@ -153,7 +161,9 @@ Outputs a JSON array of marker objects.
     "locations": [
       {"file": "src/module/file.py", "line": 12},
       {"file": "src/module/other.py", "line": 44}
-    ]
+    ],
+    "author": "Alice Example",
+    "date": "2026-07-01"
   }
 ]
 ```
@@ -166,6 +176,8 @@ Field definitions:
 - `line` (`integer`) — representative 1-based line number.
 - `count` (`integer`) — number of occurrences represented by the record.
 - `locations` (`array`) — all source occurrences as `{ "file": string, "line": integer }` entries.
+- `author` (`string`, optional) — last commit author from `git blame` when `--blame` is enabled and the file is tracked.
+- `date` (`string`, optional, `YYYY-MM-DD`) — blamed author date in UTC when `--blame` is available.
 
 ### Markdown (`--format markdown`)
 

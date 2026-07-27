@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 
@@ -260,3 +261,100 @@ def test_cli_diff_lists_only_markers_added_since_ref(tmp_path: Path, capsys) -> 
             "locations": [{"file": "pkg/mod.py", "line": 2}],
         }
     ]
+
+
+def _commit_all(repo: Path, message: str, *, when: str) -> None:
+    env = os.environ.copy()
+    env["GIT_AUTHOR_DATE"] = when
+    env["GIT_COMMITTER_DATE"] = when
+    subprocess.run(["git", "add", "."], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", message], cwd=repo, env=env, check=True)
+
+
+def _init_repo_with_identity(repo: Path) -> None:
+    subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+
+
+def test_cli_scan_blame_adds_author_and_date_for_tracked_files(tmp_path: Path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo_with_identity(repo)
+
+    (repo / "src").mkdir()
+    (repo / "src" / "tracked.py").write_text("# TODO: tracked marker\n", encoding="utf-8")
+    _commit_all(repo, "add tracked marker", when="2024-01-01T09:00:00+0000")
+
+    exit_code = cli(["scan", str(repo), "--format", "json", "--no-dedup", "--blame"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload == [
+        {
+            "tag": "TODO",
+            "text": "tracked marker",
+            "file": "src/tracked.py",
+            "line": 1,
+            "count": 1,
+            "locations": [{"file": "src/tracked.py", "line": 1}],
+            "author": "Test User",
+            "date": "2024-01-01",
+        }
+    ]
+
+
+def test_cli_scan_blame_skips_untracked_files_without_crashing(tmp_path: Path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo_with_identity(repo)
+
+    (repo / "src").mkdir()
+    (repo / "src" / "tracked.py").write_text("# TODO: tracked marker\n", encoding="utf-8")
+    _commit_all(repo, "add tracked marker", when="2024-01-01T09:00:00+0000")
+
+    (repo / "src" / "untracked.py").write_text("# TODO: untracked marker\n", encoding="utf-8")
+
+    exit_code = cli(["scan", str(repo), "--format", "json", "--no-dedup", "--blame"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert payload == [
+        {
+            "tag": "TODO",
+            "text": "tracked marker",
+            "file": "src/tracked.py",
+            "line": 1,
+            "count": 1,
+            "locations": [{"file": "src/tracked.py", "line": 1}],
+            "author": "Test User",
+            "date": "2024-01-01",
+        },
+        {
+            "tag": "TODO",
+            "text": "untracked marker",
+            "file": "src/untracked.py",
+            "line": 1,
+            "count": 1,
+            "locations": [{"file": "src/untracked.py", "line": 1}],
+        },
+    ]
+
+
+def test_cli_scan_sort_age_orders_oldest_first(tmp_path: Path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo_with_identity(repo)
+
+    (repo / "src").mkdir()
+    (repo / "src" / "newer.py").write_text("# TODO: newer marker\n", encoding="utf-8")
+    _commit_all(repo, "add newer marker", when="2025-01-01T10:00:00+0000")
+
+    (repo / "src" / "older.py").write_text("# TODO: older marker\n", encoding="utf-8")
+    _commit_all(repo, "add older marker", when="2024-01-01T10:00:00+0000")
+
+    exit_code = cli(["scan", str(repo), "--format", "json", "--no-dedup", "--sort", "age"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert [item["file"] for item in payload] == ["src/older.py", "src/newer.py"]
